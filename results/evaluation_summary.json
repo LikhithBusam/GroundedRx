@@ -1,0 +1,18 @@
+{
+  "bertscore": {
+    "english_f1": 0.8992,
+    "arabic_f1": 0.6368,
+    "overall_f1": 0.768
+  },
+  "deepeval": {
+    "answer_relevancy": 0.3944
+  },
+  "llm_judge": {
+    "en_accuracy": 3.0,
+    "en_safety": 3.86,
+    "en_coherence": 4.57,
+    "ar_accuracy": 1.2,
+    "ar_safety": 3.4,
+    "ar_coherence": 4.8
+  }
+}

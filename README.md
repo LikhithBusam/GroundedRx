@@ -73,8 +73,15 @@ number in `PROJECT_REPORT.md`.
 | Metric | English | Arabic |
 |---|---|---|
 | BERTScore (judge-independent) | 0.899 | 0.637 |
+| Best-chunk retrieval quality (BERTScore F1 vs. ground truth) | 0.836 avg | 0.683 avg |
 | Cross-lingual retrieval share (raw query, unfiltered) | — | ~60% of top-20 crossed the language boundary |
-| Groundedness gate | caught 1/12 real fabrications (invented contraindication number) | fails closed on internal error |
+| Groundedness gate | blocked 1/12 (varies by run — see `results/README.md`) | fails closed on internal error |
+
+The retrieval-quality audit above isolates "did retrieval find the right content" from "did
+generation write a good answer from it" — every one of the 12 evaluation questions retrieved a
+chunk with real topical overlap to its ground truth, so the EN/AR BERTScore gap is a
+*generation*-quality gap, not a retrieval failure. Full per-question breakdown and the exact
+gate calibration output: [`results/README.md`](results/README.md).
 
 **Judge-based metrics (DeepEval, LLM-as-judge) are reported separately and with a caveat, not
 folded into the table above.** After the Qwen2.5-7B model swap, judge-routed scores dropped
@@ -111,7 +118,7 @@ This is being built incrementally in the open. Current state:
 
 - ✅ Full RAG pipeline, working and evaluated (retrieval, reranking, generation, groundedness
   gate)
-- ✅ Evaluation harness (BERTScore, DeepEval, LLM-as-judge)
+- ✅ Evaluation harness (BERTScore, DeepEval, LLM-as-judge) — real results in `results/`
 - ✅ A Gradio demo UI (`GroundedRx_Colab.ipynb`, Component 7) — session-based public link,
   not a permanent deployment
 - ⬜ Installable Python package (currently notebook-only)
@@ -142,6 +149,8 @@ Full instructions, including the Colab/Kaggle differences and every cell's purpo
 - `PROJECT_REPORT.md` — the evaluation report: every experiment run, every number measured.
 - `qdrant_db_archive/` / `qdrant_db_archive.zip` — the pre-built vector store (2,365 chunks,
   464 documents).
+- `results/` — real evaluation output (BERTScore, DeepEval, LLM-as-judge, retrieval-quality
+  audit, groundedness-gate calibration) from an actual Kaggle run.
 
 ## License
 
