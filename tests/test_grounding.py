@@ -11,7 +11,6 @@ No GPU, no sentence-transformers, no network needed for any test here.
 """
 
 import numpy as np
-import pytest
 
 from groundedrx.config import REFUSAL
 from groundedrx.grounding import check_grounding
@@ -47,7 +46,8 @@ CTX_VECS = {
 
 def test_grounded_answer_passes():
     answer = "The recommended dose is 10 mg once daily."
-    embedder = FakeEmbedder({**CTX_VECS, answer.rstrip("."): CTX_VECS["The recommended dose is 10 mg once daily"]})
+    dose_vec = CTX_VECS["The recommended dose is 10 mg once daily"]
+    embedder = FakeEmbedder({**CTX_VECS, answer.rstrip("."): dose_vec})
     result = check_grounding(answer, CTX, "en", embedder=embedder)
     assert result["grounded"] is True
     assert result["hallucinated_numbers"] == []

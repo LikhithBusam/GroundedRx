@@ -42,7 +42,26 @@ eval = [
 
 dev = [
     "pytest~=8.0",
+    "ruff~=0.15",
 ]
 
 [tool.setuptools.packages.find]
 include = ["groundedrx*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["Untitled1_(1).ipynb"]
+
+[tool.ruff.lint]
+# Default (E/F) rules only -- ponytail: no speculative rule categories
+# turned on until a real problem shows up that they'd have caught.
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# PROMPT_EN/PROMPT_AR are triple-quoted strings sent verbatim to the LLM --
+# a line-length violation here is content, not code style. A `# noqa`
+# comment can't be added inside the string literal without corrupting the
+# actual prompt text, so this file is exempted from E501 entirely (it's
+# pure config data, no logic to hide lint issues in).
+"groundedrx/config.py" = ["E501"]

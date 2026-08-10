@@ -47,6 +47,23 @@ for what comes next (e.g. the planned FastAPI service). If you change pipeline b
 copies currently need the same fix — check both `GroundedRx_Colab.ipynb` and `groundedrx/`
 until they're unified.
 
+## CI (`.github/workflows/ci.yml`)
+
+Runs on every push/PR to `main`, Python 3.10 and 3.11, all CPU-only — no GPU, no model
+downloads, no vector store needed: `ruff check` (lint, default E/F/I rules only — see
+"tooling philosophy" note below), the full `pytest tests/` suite (20 tests), and
+`scripts/check_notebook.py` (verifies every notebook code cell still parses as valid Python,
+the same `ast.parse()` check used by hand throughout this project's development, now
+automatic on every push instead of relying on someone remembering to run it). Deliberately
+does **not** run the notebook itself — Setup/Component 4/5/6 all require a CUDA GPU CI
+runners don't have.
+
+Tooling is deliberately minimal: ruff only, no black/isort/mypy/pre-commit stack. `E501`
+(line-too-long) is disabled specifically for `groundedrx/config.py`, since its prompt
+templates are triple-quoted strings sent verbatim to the LLM — a `# noqa` comment can't be
+added inside a string literal without corrupting the actual prompt text, so the whole file is
+exempted rather than reflowing prompt content to satisfy a linter.
+
 ## Repository Contents
 
 - `GroundedRx_Colab.ipynb` — **the notebook to run.** A cleaned, linearly-ordered rebuild of

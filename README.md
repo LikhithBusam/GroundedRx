@@ -124,7 +124,9 @@ This is being built incrementally in the open. Current state:
 - ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline
   extracted into real, importable modules with unit tests (20/20 passing, CPU-only, zero GPU
   dependencies required just to run them). See [Package](#package) below.
-- ⬜ CI (tests exist and pass locally; not yet wired to GitHub Actions)
+- ✅ CI (GitHub Actions, `.github/workflows/ci.yml`) — ruff lint, the full pytest suite, and a
+  check that every notebook cell still parses as valid Python, on every push/PR. Python 3.10
+  and 3.11, no GPU needed for any of it.
 - ⬜ FastAPI service + on-premises Dockerfile
 - ⬜ Permanent hosted demo
 
@@ -142,10 +144,13 @@ lazily via `functools.lru_cache`, only on first actual use. This is what makes t
 unit-testable on a CPU-only machine:
 
 ```bash
-pip install -e .
-pip install pytest numpy
-pytest tests/  # 20 passed, no GPU, no model downloads, <1s
+pip install -e ".[dev]"
+ruff check groundedrx/ tests/ scripts/
+pytest tests/                    # 20 passed, no GPU, no model downloads, <1s
+python scripts/check_notebook.py # notebook cells still parse as valid Python
 ```
+
+All four of those are exactly what `.github/workflows/ci.yml` runs on every push.
 
 `GroundedRx_Colab.ipynb` currently keeps its own copy of this same logic rather than
 importing from the package — deliberate for now, since verifying an import-based rewrite
@@ -181,6 +186,9 @@ Full instructions, including the Colab/Kaggle differences and every cell's purpo
 - `groundedrx/` — the pipeline as an installable, tested Python package (see
   [Package](#package) above).
 - `tests/` — pytest suite for the package, CPU-only, no GPU required.
+- `scripts/check_notebook.py` — verifies every notebook code cell still parses as valid
+  Python; run in CI on every push.
+- `.github/workflows/ci.yml` — lint + tests + notebook check, no GPU needed.
 
 ## License
 
