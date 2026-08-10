@@ -1,0 +1,28 @@
+# Virtual environment — never commit this (250+ files, machine-specific)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Redundant with qdrant_db_archive.zip (same data, unzipped) — commit the zip only
+qdrant_db_archive/
+
+# Old disordered prototype, superseded by CLAUDE.md + GroundedRx_Colab.ipynb
+Untitled1_(1).ipynb
+
+# Scratch/debug dumps from local development — not part of the deliverable
+c5_falcon.txt
+c5_gate_hdr.txt
+c6_full.txt
+setup_now.txt
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
