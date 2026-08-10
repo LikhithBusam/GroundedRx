@@ -121,10 +121,37 @@ This is being built incrementally in the open. Current state:
 - ✅ Evaluation harness (BERTScore, DeepEval, LLM-as-judge) — real results in `results/`
 - ✅ A Gradio demo UI (`GroundedRx_Colab.ipynb`, Component 7) — session-based public link,
   not a permanent deployment
-- ⬜ Installable Python package (currently notebook-only)
-- ⬜ Automated tests / CI
+- ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline
+  extracted into real, importable modules with unit tests (20/20 passing, CPU-only, zero GPU
+  dependencies required just to run them). See [Package](#package) below.
+- ⬜ CI (tests exist and pass locally; not yet wired to GitHub Actions)
 - ⬜ FastAPI service + on-premises Dockerfile
 - ⬜ Permanent hosted demo
+
+## Package
+
+`groundedrx/` is the pipeline extracted into an installable package — `config.py`,
+`paths.py` (vector-store path resolution), `resources.py` (lazy-loaded model/index
+singletons), `retrieval.py` (hybrid RRF fusion, LangGraph pipeline), `generation.py`,
+`grounding.py`, `pipeline.py`.
+
+**By design, `import groundedrx` requires no GPU and no torch/transformers/
+sentence-transformers install at all** — every heavy resource in `resources.py` is loaded
+lazily via `functools.lru_cache`, only on first actual use. This is what makes the pure logic
+(RRF fusion math, path resolution, the groundedness gate's three documented bug fixes)
+unit-testable on a CPU-only machine:
+
+```bash
+pip install -e .
+pip install pytest numpy
+pytest tests/  # 20 passed, no GPU, no model downloads, <1s
+```
+
+`GroundedRx_Colab.ipynb` currently keeps its own copy of this same logic rather than
+importing from the package — deliberate for now, since verifying an import-based rewrite
+requires a live Kaggle GPU run, which hasn't happened yet. The package is the tested,
+reusable source going forward (e.g. for the planned FastAPI service); the notebook remains
+the trusted, independently-verified GPU artifact until that switch is made and re-verified.
 
 ## Running it
 
@@ -151,6 +178,9 @@ Full instructions, including the Colab/Kaggle differences and every cell's purpo
   464 documents).
 - `results/` — real evaluation output (BERTScore, DeepEval, LLM-as-judge, retrieval-quality
   audit, groundedness-gate calibration) from an actual Kaggle run.
+- `groundedrx/` — the pipeline as an installable, tested Python package (see
+  [Package](#package) above).
+- `tests/` — pytest suite for the package, CPU-only, no GPU required.
 
 ## License
 

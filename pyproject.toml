@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groundedrx"
+version = "0.1.0"
+description = "Bilingual (Arabic/English) medical RAG with a runtime groundedness gate"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+# Core: enough to run retrieval logic, path resolution, and the
+# groundedness gate (with an injected embedder) on a CPU-only machine.
+# Nothing here requires a GPU.
+dependencies = [
+    "qdrant-client~=1.9",
+    "rank_bm25~=0.2",
+    "langdetect~=1.0",
+    "langgraph~=0.2",
+    "numpy~=1.26",
+]
+
+[project.optional-dependencies]
+# GPU-only: actually loading bge-m3/reranker/Qwen2.5 and calling
+# rag_answer(). Requires a CUDA GPU at runtime, not just at install time.
+gpu = [
+    "torch>=2.1",
+    "transformers>=4.45",
+    "accelerate>=0.30",
+    "bitsandbytes>=0.43",
+    "sentence-transformers>=3.0",
+]
+
+# Evaluation harness (Component 6): BERTScore, DeepEval, LLM-as-judge.
+eval = [
+    "bert-score~=0.3",
+    "deepeval>=1.0",
+    "pandas~=2.2",
+    "nest_asyncio~=1.6",
+]
+
+dev = [
+    "pytest~=8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["groundedrx*"]

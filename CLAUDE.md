@@ -25,6 +25,28 @@ failed to fix Arabic quality (see "Arabic generation quality investigation" belo
 RAPIDS/cuDF/cuML/numba/dask-cuda stack is tightly pinned to CUDA 12.x and conflicts with the
 torch/CUDA-13/numpy≥2.5 combination `sglang[all]` wants.
 
+## Package (`groundedrx/`)
+
+The retrieval/generation/grounding pipeline also exists as an installable package under
+`groundedrx/`, extracted from the notebook (Components 4 and 5) as faithfully as possible —
+same logic, same comments, same documented bug fixes, just split into real modules
+(`config.py`, `paths.py`, `resources.py`, `retrieval.py`, `generation.py`, `grounding.py`,
+`pipeline.py`) with `functools.lru_cache`-based lazy loading so `import groundedrx` needs no
+GPU and no torch/transformers/sentence-transformers install. `rrf_fuse()` (retrieval.py) is a
+pure function taking plain dicts, and `check_grounding()` (grounding.py) takes an injectable
+`embedder` parameter — both specifically so they're unit-testable on a CPU-only machine
+(`tests/`, 20 tests, all passing, no GPU/model downloads, <1s to run).
+
+**Deliberate, current limitation: the notebook does NOT import from this package.** It keeps
+its own copy of the same logic. Rewriting the notebook to `pip install -e .` and import from
+`groundedrx/` instead would eliminate the duplication, but doing that blind — without a live
+Kaggle GPU run to verify nothing broke — is a real risk with no local GPU available to catch
+it first. Until that verification pass happens, the notebook remains the trusted,
+independently-tested-on-real-GPU artifact, and the package is a separate, tested foundation
+for what comes next (e.g. the planned FastAPI service). If you change pipeline behavior, both
+copies currently need the same fix — check both `GroundedRx_Colab.ipynb` and `groundedrx/`
+until they're unified.
+
 ## Repository Contents
 
 - `GroundedRx_Colab.ipynb` — **the notebook to run.** A cleaned, linearly-ordered rebuild of

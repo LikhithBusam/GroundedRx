@@ -3,6 +3,9 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+.coverage
 
 # Redundant with qdrant_db_archive.zip (same data, unzipped) — commit the zip only
 qdrant_db_archive/
