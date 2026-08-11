@@ -35,7 +35,25 @@ same logic, same comments, same documented bug fixes, just split into real modul
 GPU and no torch/transformers/sentence-transformers install. `rrf_fuse()` (retrieval.py) is a
 pure function taking plain dicts, and `check_grounding()` (grounding.py) takes an injectable
 `embedder` parameter — both specifically so they're unit-testable on a CPU-only machine
-(`tests/`, 20 tests, all passing, no GPU/model downloads, <1s to run).
+(`tests/`, 30 tests, all passing, no GPU/model downloads, <1s to run).
+
+**`tests/test_grounding_fixtures.py`** is a distinct tier from the rest: it uses a real,
+frozen Arabic case (`tests/fixtures/grounding/ar_refusal_case.json`) with genuinely real
+`bge-m3` embedding vectors, not synthetic `FakeEmbedder` doubles like the rest of
+`test_grounding.py`. Prompted by
+[a GitHub issue](https://github.com/LikhithBusam/GroundedRx/issues/1) asking for exactly
+this — a no-GPU fixture that locks in the gate's real Arabic-refusal behavior so the
+project's central claim (AR/EN gap disclosed honestly, gate as fabrication filter) is
+reproducible from a clean checkout, before anyone has a GPU or the corpus attached. The
+query and retrieved-context excerpts are real, verbatim from a live Component 7 demo run
+that got blocked; the `answer_raw` is a reconstructed representative case (the actual raw
+model output from that run was never saved — see the fixture's own `description` field and
+the test file's docstring for the full provenance). The embedding vectors themselves are
+real: computed once on a live Kaggle GPU session and frozen into the fixture, so the test
+needs zero GPU, zero network, zero model download, but isn't testing made-up numbers. A
+bonus third test in the same file (`test_ar_case_known_ceiling_exactly_half_ungrounded_does_not_block`)
+reuses the same real vectors to give the majority-vote "known ceiling" comment in
+`grounding.py` (previously "untested in practice") an actual real-data regression test.
 
 **Deliberate, current limitation: the notebook does NOT import from this package.** It keeps
 its own copy of the same logic. Rewriting the notebook to `pip install -e .` and import from
@@ -51,7 +69,7 @@ until they're unified.
 
 Runs on every push/PR to `main`, Python 3.10 and 3.11, all CPU-only — no GPU, no model
 downloads, no vector store needed: `ruff check` (lint, default E/F/I rules only — see
-"tooling philosophy" note below), the full `pytest tests/` suite (20 tests), and
+"tooling philosophy" note below), the full `pytest tests/` suite (30 tests), and
 `scripts/check_notebook.py` (verifies every notebook code cell still parses as valid Python,
 the same `ast.parse()` check used by hand throughout this project's development, now
 automatic on every push instead of relying on someone remembering to run it). Deliberately

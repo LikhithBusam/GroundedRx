@@ -122,7 +122,7 @@ This is being built incrementally in the open. Current state:
 - ✅ A Gradio demo UI (`GroundedRx_Colab.ipynb`, Component 7) — session-based public link,
   not a permanent deployment
 - ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline
-  extracted into real, importable modules with unit tests (20/20 passing, CPU-only, zero GPU
+  extracted into real, importable modules with unit tests (30/30 passing, CPU-only, zero GPU
   dependencies required just to run them). See [Package](#package) below.
 - ✅ CI (GitHub Actions, `.github/workflows/ci.yml`) — ruff lint, the full pytest suite
   (including the FastAPI wiring, pipeline mocked), a check that every notebook cell still
@@ -148,7 +148,7 @@ unit-testable on a CPU-only machine:
 ```bash
 pip install -e ".[dev]"
 ruff check groundedrx/ tests/ scripts/
-pytest tests/                    # 20 passed, no GPU, no model downloads, <1s
+pytest tests/                    # 30 passed, no GPU, no model downloads, <1s
 python scripts/check_notebook.py # notebook cells still parse as valid Python
 ```
 
