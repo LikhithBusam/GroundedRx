@@ -29,6 +29,7 @@ def find_qdrant_store(search_root: str) -> Optional[str]:
 
 
 def is_kaggle() -> bool:
+    """True inside a Kaggle notebook session (Colab has no /kaggle/input)."""
     return os.path.exists("/kaggle/input")
 
 

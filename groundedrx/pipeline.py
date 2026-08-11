@@ -47,6 +47,8 @@ def rag_answer(query: str, document_id_filter: Optional[int] = None) -> dict:
 
 
 def print_result(result: dict) -> None:
+    """Pretty-print a rag_answer() result -- used by the notebook's smoke
+    tests, not by the API (which returns the dict as JSON directly)."""
     print(f"Query          : {result['query']}")
     print(f"Language       : {result['language'].upper()}")
     print(f"Retrieval score: {result['retrieval_score']:.4f}")

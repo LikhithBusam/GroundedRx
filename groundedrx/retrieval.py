@@ -77,6 +77,9 @@ def rrf_fuse(dense_hits: List[dict], sparse_hits: List[dict], rrf_k: int) -> Lis
 
 # ── Node 1: Language Detection ──
 def detect_language(state: RAGState) -> RAGState:
+    """Detect query language via langdetect, mapped to 'ar' or 'en' (default
+    'en' on detection failure -- drives which prompt template and rewrite
+    terms are used downstream)."""
     from langdetect import detect
 
     try:
@@ -203,6 +206,9 @@ def retrieve_chunks(state: RAGState) -> RAGState:
 
 # ── Node 5: Quality Check ──
 def check_retrieval_quality(state: RAGState) -> RAGState:
+    """Feedback-loop gate: flags a rewrite if the best dense score is below
+    threshold and retries remain. See route_after_quality_check for the
+    actual routing decision this feeds."""
     score = state["retrieval_score"]
     rewrite_count = state.get("rewrite_count", 0)
     needs_rewrite = (
@@ -272,6 +278,8 @@ def build_context(state: RAGState) -> RAGState:
 
 
 def route_after_quality_check(state: RAGState) -> str:
+    """LangGraph conditional-edge target: back to rewrite_query on a failed
+    quality check, otherwise on to reranking."""
     if state.get("needs_rewrite", False):
         return "rewrite_query"
     return "rerank_chunks"

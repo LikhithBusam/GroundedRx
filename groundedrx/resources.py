@@ -22,6 +22,8 @@ from .paths import resolve_store_path
 
 @lru_cache(maxsize=1)
 def get_client():
+    """The local-mode Qdrant client, opened against the resolved store path.
+    CPU-only -- no GPU or torch dependency."""
     from qdrant_client import QdrantClient
 
     return QdrantClient(path=resolve_store_path())
@@ -29,6 +31,9 @@ def get_client():
 
 @lru_cache(maxsize=1)
 def get_embed_model():
+    """BAAI/bge-m3 SentenceTransformer, GPU-resident. Used for both query
+    and (offline, at indexing time) chunk embedding -- must stay the same
+    model/normalization used when the Qdrant collection was built."""
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer("BAAI/bge-m3", device="cuda")
@@ -36,6 +41,8 @@ def get_embed_model():
 
 @lru_cache(maxsize=1)
 def get_reranker():
+    """BAAI/bge-reranker-v2-m3 CrossEncoder, GPU-resident. Reranks the
+    hybrid-retrieved top-k down to CONFIG_C4['top_k_rerank']."""
     from sentence_transformers import CrossEncoder
 
     return CrossEncoder(config.CONFIG_C4["reranker_model"], device="cuda")
@@ -43,6 +50,8 @@ def get_reranker():
 
 @lru_cache(maxsize=1)
 def get_tokenizer():
+    """Tokenizer for config.MODEL_NAME, used both for generation and for
+    building the chat-template prompt via apply_chat_template."""
     from transformers import AutoTokenizer
 
     return AutoTokenizer.from_pretrained(config.MODEL_NAME)
@@ -50,6 +59,9 @@ def get_tokenizer():
 
 @lru_cache(maxsize=1)
 def get_model():
+    """config.MODEL_NAME loaded 4-bit NF4 (or 8-bit if config.USE_8BIT),
+    GPU-resident, in eval mode. See CLAUDE.md "Model swap" for why NF4 is
+    the default and 8-bit is a rejected-but-preserved toggle."""
     import torch
     from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
@@ -108,6 +120,7 @@ def get_bm25_docs() -> List[dict]:
 
 @lru_cache(maxsize=1)
 def get_bm25_index():
+    """BM25Okapi index built once over every chunk's text. CPU-only."""
     from rank_bm25 import BM25Okapi
 
     from .retrieval import _tokenize

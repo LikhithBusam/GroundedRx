@@ -14,6 +14,7 @@ array-like` method.
 
 import logging
 import re
+from typing import Any, Optional
 
 from . import config
 
@@ -34,7 +35,9 @@ def _sentences(text: str) -> list:
     return [s.strip() for s in parts if len(s.strip()) >= config.CONFIG_GATE["min_sentence_chars"]]
 
 
-def check_grounding(answer: str, context: str, language: str, embedder=None) -> dict:
+def check_grounding(
+    answer: str, context: str, language: str, embedder: Optional[Any] = None
+) -> dict:
     """
     Is every claim in `answer` supported by `context`?
     Returns a verdict dict; never raises -- an internal failure fails CLOSED.

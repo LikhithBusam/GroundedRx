@@ -47,7 +47,7 @@ class AnswerResponse(BaseModel):
 
 
 @app.get("/health")
-def health():
+def health() -> dict:
     """Liveness check -- does not load the model or touch the vector store,
     so it stays fast even before the first real request warms anything up."""
     return {"status": "ok", "model": config.MODEL_NAME}
