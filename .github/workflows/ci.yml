@@ -4,8 +4,9 @@ name: CI
 # vector store needed. This deliberately does NOT run the notebook itself
 # (Setup/Component 4/5/6 all require a CUDA GPU) -- see CLAUDE.md. What it
 # does verify: the groundedrx package installs and its pure/CPU-testable
-# logic behaves correctly, the code lints clean, and the notebook's cells
-# still parse as valid Python after any edit.
+# logic behaves correctly (including the FastAPI wiring, pipeline mocked),
+# the code lints clean, the notebook's cells still parse as valid Python,
+# and the on-premises Docker image actually builds.
 on:
   push:
     branches: [main]
@@ -25,8 +26,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install package (core + dev, no GPU extras)
-        run: pip install -e ".[dev]"
+      - name: Install package (core + dev + api extras, no GPU extras)
+        run: pip install -e ".[dev,api]"
 
       - name: Ruff lint
         run: ruff check groundedrx/ tests/ scripts/
@@ -36,3 +37,23 @@ jobs:
 
       - name: Notebook cells still parse as valid Python
         run: python scripts/check_notebook.py
+
+  docker-build:
+    # Proves the on-premises image builds cleanly -- does NOT run it (that
+    # needs a GPU + the mounted vector store, neither available on a GH
+    # Actions runner). A build-only check is still real signal: it catches
+    # a broken pyproject.toml, a missing file, or a bad RUN step before
+    # anyone tries this on real GPU hardware.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: groundedrx:ci-build
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

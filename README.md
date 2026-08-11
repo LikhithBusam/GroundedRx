@@ -20,8 +20,8 @@ text before being shown — if the check fails, the user gets a refusal, not a g
 - **Fully self-hosted, on-premises-capable.** No call to OpenAI, Anthropic, or any external
   LLM API. The generation model, the embedding model, the reranker, and the vector store are
   all local. For a medical-data system, that means patient-leaflet content and queries never
-  leave the deployment environment. (Docker packaging for an actual on-prem deployment is
-  in progress — see [Status](#status--what-actually-exists-today) below.)
+  leave the deployment environment — packaged as a single Docker image, see
+  [On-Premises Deployment](#on-premises-deployment) below.
 - **True cross-lingual retrieval, measured, not assumed.** An Arabic query can surface English
   source chunks and vice versa without translating first — verified directly (see
   [Results](#results-real-numbers)), not just claimed because the embedding model is
@@ -124,10 +124,12 @@ This is being built incrementally in the open. Current state:
 - ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline
   extracted into real, importable modules with unit tests (20/20 passing, CPU-only, zero GPU
   dependencies required just to run them). See [Package](#package) below.
-- ✅ CI (GitHub Actions, `.github/workflows/ci.yml`) — ruff lint, the full pytest suite, and a
-  check that every notebook cell still parses as valid Python, on every push/PR. Python 3.10
-  and 3.11, no GPU needed for any of it.
-- ⬜ FastAPI service + on-premises Dockerfile
+- ✅ CI (GitHub Actions, `.github/workflows/ci.yml`) — ruff lint, the full pytest suite
+  (including the FastAPI wiring, pipeline mocked), a check that every notebook cell still
+  parses as valid Python, and a Docker build-only job, all on every push/PR. Python 3.10 and
+  3.11, no GPU needed for any of it.
+- ✅ FastAPI service (`groundedrx/api.py`) + on-premises `Dockerfile` — see
+  [On-Premises Deployment](#on-premises-deployment) below.
 - ⬜ Permanent hosted demo
 
 ## Package
@@ -157,6 +159,92 @@ importing from the package — deliberate for now, since verifying an import-bas
 requires a live Kaggle GPU run, which hasn't happened yet. The package is the tested,
 reusable source going forward (e.g. for the planned FastAPI service); the notebook remains
 the trusted, independently-verified GPU artifact until that switch is made and re-verified.
+
+## On-Premises Deployment
+
+`groundedrx/api.py` is a small FastAPI service over `rag_answer()` — `GET /health` (liveness,
+doesn't force a model load) and `POST /answer` (the real end-to-end call). No auth, no API
+keys, no rate limiting, by design: this is meant to run inside your own network, not be
+exposed to the public internet directly.
+
+The response deliberately surfaces the gate's verdict, not just the final text:
+
+```json
+{
+  "query": "What are the side effects of Linopril?",
+  "language": "en",
+  "answer": "Common side effects include headache and dizziness.",
+  "answer_raw": "Common side effects include headache and dizziness.",
+  "grounding": {
+    "grounded": true,
+    "reason": "ok",
+    "min_similarity": 0.82,
+    "hallucinated_numbers": []
+  },
+  "retrieval_score": 0.71
+}
+```
+
+If the gate blocks an answer, `answer` becomes the refusal while `answer_raw` keeps what the
+model actually generated — callers can see the gate is real and inspect what it caught,
+instead of trusting a black box.
+
+**Requirements:** a machine with an NVIDIA GPU (T4-class or better, ~16GB VRAM comfortably
+fits Qwen2.5-7B 4-bit + bge-m3 + reranker together), NVIDIA drivers, and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)
+so Docker can pass the GPU through (`--gpus all`). Model weights are **not** baked into the
+image — the first request downloads them via the normal Hugging Face cache; after that, the
+container can run fully air-gapped, no internet needed.
+
+```bash
+docker build -t groundedrx .
+
+docker run --gpus all -p 8000:8000 \
+  -v "$(pwd)/qdrant_db_archive:/data/qdrant_storage" \
+  groundedrx
+
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/answer \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What are the side effects of Linopril?"}'
+```
+
+The vector store is mounted as a volume, not baked into the image — same data, smaller image,
+corpus updates don't require rebuilding. **Mount it read-write, not read-only** — Qdrant's
+local client writes a `.lock` file into the store directory to open it, the same reason
+Kaggle's read-only `/kaggle/input/` needs a writable copy (see `CLAUDE.md`); a `:ro` mount
+fails with `OSError: [Errno 30] Read-only file system`, confirmed live. `GROUNDEDRX_QDRANT_PATH`
+(set in the `Dockerfile`, overridable) tells `groundedrx/paths.py` to use the mounted path
+directly instead of trying Kaggle/Colab auto-detection, which wouldn't find anything inside a
+container.
+
+**Honest status, verified as thoroughly as possible without a GPU:**
+- ✅ `docker build` succeeds, locally and in CI.
+- ✅ The container starts and `GET /health` responds correctly with no GPU needed.
+- ✅ The real vector store, mounted as a volume, loads correctly inside the container — the
+  Qdrant client opens it (2,365 points, 1024-dim, Cosine — matching the real collection) and
+  the BM25 index builds from it and reproduces an already-documented result ("lisinopril dose
+  10 mg" top-matches document 502, the real Linopril leaflet — the same finding as the
+  notebook's own hybrid search), confirmed against the actual production data, not a fixture.
+- ✅ **`POST /answer` runs the full pipeline correctly and fails at exactly the right point,
+  for exactly the right reason.** An earlier build had a real bug here — `sentence-transformers`
+  and `transformers` resolved to versions from different points in time relative to each other,
+  and `sentence-transformers`' `model_card.py` imported a symbol (`CodeCarbonCallback`) that no
+  longer existed in the resolved `transformers` version, raising `ModuleNotFoundError` on every
+  call regardless of GPU. Fixed by pinning the `gpu` extras to patch-level versions from the
+  same release era (see `pyproject.toml`), rebuilt, and re-verified: language detection, query
+  embedding, and Qdrant retrieval now all execute correctly against the real corpus, and the
+  request fails only at the genuinely GPU-dependent step —
+  `RuntimeError: Found no NVIDIA driver on your system` — confirmed via a real HTTP call
+  (`500` in 11s, not a hang), not just a script.
+- ❌ Actually generating an answer on real GPU hardware is still unverified — no GPU available
+  in this development environment, and neither Kaggle nor Colab notebooks support running
+  Docker with GPU passthrough. Everything up to the point where a GPU becomes strictly
+  necessary is now confirmed working end to end.
+
+This is deliberately not overstated as "done" — a Docker image that builds is not the same
+claim as one that works, and the gap between those two was a real, confirmed bug, not a
+hypothetical one.
 
 ## Running it
 
@@ -188,7 +276,11 @@ Full instructions, including the Colab/Kaggle differences and every cell's purpo
 - `tests/` — pytest suite for the package, CPU-only, no GPU required.
 - `scripts/check_notebook.py` — verifies every notebook code cell still parses as valid
   Python; run in CI on every push.
-- `.github/workflows/ci.yml` — lint + tests + notebook check, no GPU needed.
+- `.github/workflows/ci.yml` — lint + tests + notebook check + Docker build check, no GPU
+  needed.
+- `groundedrx/api.py` — the FastAPI service (`/health`, `/answer`). See
+  [On-Premises Deployment](#on-premises-deployment) above.
+- `Dockerfile` / `.dockerignore` — the on-premises deployment image.
 
 ## License
 

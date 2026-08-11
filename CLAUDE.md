@@ -64,6 +64,97 @@ templates are triple-quoted strings sent verbatim to the LLM — a `# noqa` comm
 added inside a string literal without corrupting the actual prompt text, so the whole file is
 exempted rather than reflowing prompt content to satisfy a linter.
 
+## Deployment (`groundedrx/api.py`, `Dockerfile`)
+
+`groundedrx/api.py` is a small FastAPI service over `rag_answer()`: `GET /health` (liveness,
+does not force a model load) and `POST /answer` (the real end-to-end call). Deliberately no
+auth/API keys/rate limiting — meant for an internal network, not public exposure. The response
+surfaces `grounding` (the full gate verdict) and `answer_raw` (pre-gate) alongside the
+delivered `answer`, specifically so a caller can see the gate is real and inspect what it
+caught rather than trusting a black box — this is the project's actual differentiator, so the
+API is designed to not hide it. `api.py` is not imported by `groundedrx/__init__.py` — fastapi
+is an optional `api` extra, not a core dependency, so plain `import groundedrx` still needs no
+web framework either. Covered by `tests/test_api.py` (4 tests, `rag_answer` monkeypatched, no
+GPU needed) exercising the request/response mapping and specifically that the
+blocked-vs-`answer_raw` distinction survives the HTTP round trip.
+
+`Dockerfile` packages this as a single on-premises deployment image — no CPU/GPU microservice
+split (unnecessary complexity for a portfolio piece), model weights **not** baked in (first
+run downloads via the normal HF cache, then it can run air-gapped), vector store **not** baked
+in either (mounted as a read-only volume — same data, smaller image, corpus updates don't need
+a rebuild). Base image is `pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime` — reusing a
+known-good torch+CUDA combination rather than hand-assembling one from a bare `nvidia/cuda`
+image, deliberately avoiding the exact class of dependency-version tightrope that broke the
+SGLang experiment (see "Backend history" below).
+
+**`GROUNDEDRX_QDRANT_PATH`** (set in the `Dockerfile`, overridable via `docker run -e`) is the
+mechanism that makes the vector store mountable: `paths.resolve_store_path()` checks this
+env var first and, if set, uses that path directly, skipping Kaggle/Colab auto-detection
+entirely. This exists because without it, `resolve_store_path()` would silently fall through
+to the Colab branch inside a container (`is_kaggle()` is false, there's no `/kaggle/input`)
+and fail looking for a zip at `/content/qdrant_db_archive.zip` that was never there — caught
+and fixed before the Dockerfile was written, not discovered by a failed deployment.
+
+**Volume mount must be read-write, not read-only.** Qdrant's local client writes a `.lock`
+file into the store directory to open it — same reason Kaggle's read-only `/kaggle/input/`
+needs a writable copy (see "Running the Notebook" above). A `:ro` mount fails with
+`OSError: [Errno 30] Read-only file system: '/data/qdrant_storage/.lock'` — confirmed live,
+not theorized, on a first pass that got this wrong the same way the Kaggle case once did.
+
+**Two real bugs found by actually running the container against the real vector store**, not
+just building the image and stopping there:
+
+1. The `:ro` mount issue above.
+2. **`POST /answer` failed on every call, independent of GPU availability** — a pure Python
+   import failure, not a CUDA problem. The `gpu` extras' dependency constraints (`~=4.45` for
+   transformers, `~=3.0` for sentence-transformers, etc.) each allow independent drift, and by
+   build time they'd resolved to versions from different points in time relative to each
+   other: transformers 4.57.6 vs. sentence-transformers 3.4.1. `sentence-transformers`'
+   `model_card.py` imports `CodeCarbonCallback` from `transformers.integrations`, which no
+   longer exists in that transformers version — `ModuleNotFoundError`, raised the moment
+   `embed_query` tries to load `bge-m3`, before any CUDA code ever runs. Fixed by pinning all
+   four `gpu` extras to patch-level versions (`~=4.45.2` instead of `~=4.45`) so they resolve
+   from the same release snapshot instead of drifting apart independently.
+
+**The fix was rebuilt and re-verified, not just applied and assumed correct.** After pinning
+the `gpu` extras to patch-level versions, a fresh build resolved `transformers==4.45.2` and
+`sentence-transformers==3.0.1` (same release era, as intended) and — notably — no longer
+reinstalled `torch` at all: the base image's original `torch==2.3.1` was left in place (`pip`
+recognized it already satisfied every remaining constraint once transformers/accelerate/
+bitsandbytes/sentence-transformers stopped pulling newer floors), so the version-drift/CUDA-13
+bloat problem and the import-chain problem turned out to share one root cause and one fix.
+Image content size dropped from 6.65GB back to 3.98GB, confirming it.
+
+**What's actually been verified, end to end, via a real HTTP call against the real corpus:**
+- ✅ `docker build` succeeds, locally against a real Docker Desktop daemon and in CI
+  (`docker-build-only` job, `docker/build-push-action` with GHA layer caching).
+- ✅ The container starts; `GET /health` responds correctly with zero GPU involvement.
+- ✅ The real vector store (not a fixture) loads correctly when mounted: `QdrantClient` opens
+  it and reports the true collection stats (2,365 points, 1024-dim, Cosine), and the BM25
+  index builds from it and reproduces an already-documented finding — "lisinopril dose 10 mg"
+  correctly top-matches document 502 (`915.xlsx`), the same result documented for the
+  notebook's own hybrid search (see Component 4 above) — real, independent confirmation the
+  package extraction preserved the notebook's actual behavior, not just similar-looking code.
+- ✅ **`POST /answer` runs the real pipeline — language detection, query embedding
+  (`bge-m3` downloads and loads correctly), and Qdrant retrieval all execute — and fails only
+  at the point that genuinely requires a GPU**: `RuntimeError: Found no NVIDIA driver on your
+  system`, raised by `torch.cuda._lazy_init()` inside `SentenceTransformer(..., device="cuda")`.
+  Confirmed via an actual `curl` call against the running container (`HTTP 500` in 11 seconds
+  once `bge-m3`'s weights were cached on disk — the first call took longer purely from the
+  ~1GB download, confirmed via rising container network I/O, not a hang), not just a Python
+  script run directly.
+- ❌ Actually generating an answer end-to-end on real GPU hardware remains unverified — no GPU
+  available in this development environment, and neither Kaggle nor Colab notebooks support
+  running Docker with GPU passthrough. This is now the *only* unverified step in the whole
+  on-premises path — everything up to where a GPU becomes strictly necessary has a confirmed,
+  real result behind it.
+
+The gap between "the image builds" and "the image works" turned out to be a real, confirmed
+gap, not a hypothetical one worth hedging about in the abstract — two real bugs (`:ro` mount,
+dependency-version drift) were only found by actually running the container against real data
+and pushing a request all the way to its true failure point, not by stopping at a successful
+`docker build`.
+
 ## Repository Contents
 
 - `GroundedRx_Colab.ipynb` — **the notebook to run.** A cleaned, linearly-ordered rebuild of
@@ -143,10 +234,14 @@ Cells, either platform:
      both Colab and Kaggle with no extra deployment step. Shows the answer, the grounding
      verdict (pass/blocked + reason + min sentence similarity), and the retrieved source
      chunks (`file_name`, `category`, rerank score). The link only lasts for the session —
-     it's a live demo of the running notebook, not a hosted deployment (that's separate,
-     later work: `groundedrx/` package + FastAPI + Docker, not yet started).
+     it's a live demo of the running notebook, distinct from the on-premises FastAPI + Docker
+     deployment in `groundedrx/api.py` and `Dockerfile` (see "Deployment" above) — this stays
+     a quick session-based way to demo the notebook interactively, not a competing deployment
+     path.
 
-There are no lint/format/test commands — this is exploratory notebook code, not a package.
+There are no lint/format/test commands for the notebook itself — it stays exploratory
+notebook code. The `groundedrx/` package and its FastAPI service (see "Deployment" below) are
+where the tested, deployable surface actually lives.
 
 ## Architecture
 

@@ -1,0 +1,24 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.git/
+.github/
+.pytest_cache/
+
+# Notebooks and local dev docs -- not needed inside the image
+*.ipynb
+*.ipynb_checkpoints/
+CLAUDE.md
+PROJECT_REPORT.md
+results/
+
+# The vector store is mounted as a volume at runtime, never baked into the
+# image -- see Dockerfile and README "On-Premises Deployment".
+qdrant_db_archive/
+qdrant_db_archive.zip
+
+tests/
+scripts/

@@ -65,6 +65,33 @@ def test_resolve_store_path_kaggle_missing_store_raises(tmp_path):
         pass
 
 
+def test_resolve_store_path_explicit_path_short_circuits_detection(tmp_path):
+    """Docker/on-premises mode: a pre-extracted store mounted as a volume.
+    Must work with no /kaggle/input or /content in sight."""
+    store_dir = _make_fake_store(tmp_path / "mounted_root")
+
+    result = resolve_store_path(explicit_path=str(store_dir))
+    assert result == str(store_dir)
+
+
+def test_resolve_store_path_explicit_path_env_var(tmp_path, monkeypatch):
+    store_dir = _make_fake_store(tmp_path / "mounted_root")
+    monkeypatch.setenv("GROUNDEDRX_QDRANT_PATH", str(store_dir))
+
+    result = resolve_store_path()
+    assert result == str(store_dir)
+
+
+def test_resolve_store_path_explicit_path_missing_meta_json_raises(tmp_path):
+    empty_dir = tmp_path / "empty_mount"
+    empty_dir.mkdir()
+    try:
+        resolve_store_path(explicit_path=str(empty_dir))
+        assert False, "expected FileNotFoundError"
+    except FileNotFoundError:
+        pass
+
+
 def test_resolve_store_path_colab_extracts_zip(tmp_path):
     work_dir = tmp_path / "content"
     zip_path = tmp_path / "qdrant_db_archive.zip"

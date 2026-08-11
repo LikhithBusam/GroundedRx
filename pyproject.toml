@@ -24,12 +24,41 @@ dependencies = [
 [project.optional-dependencies]
 # GPU-only: actually loading bge-m3/reranker/Qwen2.5 and calling
 # rag_answer(). Requires a CUDA GPU at runtime, not just at install time.
+#
+# Deliberately does NOT list torch. The notebook's own Setup cell never
+# pip-installs torch either -- it relies entirely on the environment's
+# preinstalled, CUDA-matched build (Colab/Kaggle preinstall one; the Docker
+# base image bakes one in).
+#
+# Pinned to a PATCH-level `~=` (e.g. transformers~=4.45.2 means
+# >=4.45.2,<4.46.0) so all four packages resolve from roughly the same
+# release era, not an open `>=` or a minor-level `~=4.45`. Two real,
+# confirmed failures during development motivated this, in order:
+#
+# 1. An open `>=` let pip resolve to whatever's LATEST on PyPI at build
+#    time, which needed a newer torch than the pinned base image ships --
+#    forcing a fresh torch wheel plus its own ~2GB CUDA 13 toolkit
+#    alongside the base image's CUDA 12.1. The exact dependency-version
+#    mismatch this project's own SGLang postmortem warns about (see
+#    CLAUDE.md "Backend history").
+# 2. Loosening to a MINOR-level `~=` (`transformers~=4.45`, `~=3.0` for
+#    sentence-transformers) reduced but didn't fix it: transformers still
+#    drifted to 4.57.6 while sentence-transformers' looser cap only let it
+#    reach 3.4.1 -- two packages resolving from different points in time
+#    relative to each other. Confirmed broken live, at runtime, not just
+#    in theory: sentence-transformers 3.4.1's `model_card.py` imports
+#    `CodeCarbonCallback` from `transformers.integrations`, which no
+#    longer exists in transformers 4.57.6 -- `ModuleNotFoundError` on
+#    every single `/answer` call, GPU or not, since it's a pure Python
+#    import failure before any CUDA code runs.
+#
+# Patch-level pins keep every package anchored to the same release
+# snapshot instead of four independent, driftable lower bounds.
 gpu = [
-    "torch>=2.1",
-    "transformers>=4.45",
-    "accelerate>=0.30",
-    "bitsandbytes>=0.43",
-    "sentence-transformers>=3.0",
+    "transformers~=4.45.2",
+    "accelerate~=0.34.2",
+    "bitsandbytes~=0.43.3",
+    "sentence-transformers~=3.0.1",
 ]
 
 # Evaluation harness (Component 6): BERTScore, DeepEval, LLM-as-judge.
@@ -38,6 +67,14 @@ eval = [
     "deepeval>=1.0",
     "pandas~=2.2",
     "nest_asyncio~=1.6",
+]
+
+# The FastAPI service (groundedrx/api.py). Separate from `gpu` because the
+# API layer itself has no GPU dependency -- only calling the endpoints does,
+# via rag_answer() pulling in the gpu extras at runtime.
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
 ]
 
 dev = [

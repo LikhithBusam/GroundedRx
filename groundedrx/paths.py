@@ -37,9 +37,18 @@ def resolve_store_path(
     kaggle_input: str = "/kaggle/input",
     colab_zip: str = "/content/qdrant_db_archive.zip",
     on_kaggle: Optional[bool] = None,
+    explicit_path: Optional[str] = None,
 ) -> str:
     """
     Resolve (and materialize, if needed) a writable Qdrant store directory.
+
+    Docker / on-premises deployment: pass `explicit_path`, or set the
+    GROUNDEDRX_QDRANT_PATH environment variable, to a directory containing
+    an already-extracted store (mounted in as a volume). This short-circuits
+    all Colab/Kaggle detection entirely -- there is no `/kaggle/input` or
+    `/content` inside a container, so without this, resolution would
+    silently fall through to the Colab branch and fail looking for a zip
+    that was never there.
 
     On Kaggle: /kaggle/input/ is read-only but Qdrant's local client needs to
     write a .lock file to open the store, and Kaggle auto-extracts any .zip
@@ -56,6 +65,16 @@ def resolve_store_path(
     via `is_kaggle()`) purely so this function is testable without an actual
     Kaggle environment.
     """
+    if explicit_path is None:
+        explicit_path = os.environ.get("GROUNDEDRX_QDRANT_PATH")
+    if explicit_path is not None:
+        if not os.path.exists(os.path.join(explicit_path, "meta.json")):
+            raise FileNotFoundError(
+                f"GROUNDEDRX_QDRANT_PATH={explicit_path} has no meta.json -- "
+                "mount the extracted qdrant_db_archive store there."
+            )
+        return explicit_path
+
     if on_kaggle is None:
         on_kaggle = is_kaggle()
     if work_dir is None:
