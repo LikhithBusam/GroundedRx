@@ -30,11 +30,28 @@ class AnswerRequest(BaseModel):
     document_id_filter: Optional[int] = None  # eval-only knob; leave unset for real queries
 
 
+class NLIContradiction(BaseModel):
+    """One sentence-level contradiction caught by the NLI verification layer
+    (see nli.check_grounding_nli). Field order/meaning matches the 3-tuple
+    nli.py itself appends: (answer sentence, its best-matching context
+    sentence, the NLI model's contradiction probability)."""
+
+    sentence: str
+    context_sentence: str
+    contradiction_score: float
+
+
 class GroundingVerdict(BaseModel):
     grounded: bool
     reason: str
     min_similarity: float
     hallucinated_numbers: List[str]
+    # nli.check_grounding_nli only adds this key to the verdict dict when the
+    # NLI check actually ran to completion (skipped entirely on a refusal,
+    # an already-failed base verdict, disabled config, or an unavailable
+    # model) -- defaults to [] so callers always get a list, never a
+    # missing field, regardless of which path produced the verdict.
+    nli_contradictions: List[NLIContradiction] = []
 
 
 class AnswerResponse(BaseModel):
@@ -65,14 +82,21 @@ def answer(request: AnswerRequest) -> AnswerResponse:
     real and inspect what it caught, not just trust a black box.
     """
     result = rag_answer(request.query, document_id_filter=request.document_id_filter)
+    grounding = result["grounding"]
     return AnswerResponse(
         query=result["query"],
         language=result["language"],
         answer=result["answer"],
         answer_raw=result["answer_raw"],
-        grounding=GroundingVerdict(**{
-            k: result["grounding"][k]
-            for k in ("grounded", "reason", "min_similarity", "hallucinated_numbers")
-        }),
+        grounding=GroundingVerdict(
+            grounded=grounding["grounded"],
+            reason=grounding["reason"],
+            min_similarity=grounding["min_similarity"],
+            hallucinated_numbers=grounding["hallucinated_numbers"],
+            nli_contradictions=[
+                NLIContradiction(sentence=s, context_sentence=c, contradiction_score=score)
+                for s, c, score in grounding.get("nli_contradictions", [])
+            ],
+        ),
         retrieval_score=result["retrieval_score"],
     )

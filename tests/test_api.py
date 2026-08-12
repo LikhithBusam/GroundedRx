@@ -92,3 +92,79 @@ def test_document_id_filter_is_passed_through(monkeypatch):
     client.post("/answer", json={"query": "test", "document_id_filter": 502})
 
     assert seen["document_id_filter"] == 502
+
+
+def test_answer_omits_nli_contradictions_when_nli_never_ran(monkeypatch):
+    """_fake_result()'s grounding dict has no "nli_contradictions" key at
+    all -- the real shape whenever NLI is skipped (refusal, disabled config,
+    unavailable model, already-failed base verdict). Must not KeyError and
+    must surface as an empty list, not a missing field."""
+    monkeypatch.setattr(api_module, "rag_answer", lambda query, document_id_filter=None: _fake_result())
+    client = TestClient(api_module.app)
+
+    resp = client.post("/answer", json={"query": "What are the side effects of Linopril?"})
+
+    assert resp.status_code == 200
+    assert resp.json()["grounding"]["nli_contradictions"] == []
+
+
+def test_answer_exposes_nli_contradiction_evidence(monkeypatch):
+    """When NLI actually blocks an answer, the evidence -- which answer
+    sentence contradicted which context sentence, at what score -- must
+    survive the HTTP round trip, not just the "contradiction (NLI)" reason
+    string."""
+    blocked = _fake_result(
+        answer="I don't have enough information to answer this question.",
+        answer_raw="This medicine is safe to use during pregnancy.",
+        grounding={
+            "grounded": False,
+            "reason": "contradiction (NLI)",
+            "min_similarity": 0.71,
+            "ungrounded_sentences": [],
+            "hallucinated_numbers": [],
+            "nli_contradictions": [
+                (
+                    "This medicine is safe to use during pregnancy.",
+                    "This medicine must not be used by pregnant women.",
+                    0.93,
+                )
+            ],
+        },
+    )
+    monkeypatch.setattr(api_module, "rag_answer", lambda query, document_id_filter=None: blocked)
+    client = TestClient(api_module.app)
+
+    resp = client.post("/answer", json={"query": "Is this medicine safe during pregnancy?"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["grounding"]["reason"] == "contradiction (NLI)"
+    contradictions = body["grounding"]["nli_contradictions"]
+    assert len(contradictions) == 1
+    assert contradictions[0] == {
+        "sentence": "This medicine is safe to use during pregnancy.",
+        "context_sentence": "This medicine must not be used by pregnant women.",
+        "contradiction_score": 0.93,
+    }
+
+
+def test_answer_with_nli_run_but_no_contradictions_returns_empty_list(monkeypatch):
+    """NLI actually ran (unlike the "never ran" case above) and found
+    nothing -- the real shape is an explicit empty list, not a missing key."""
+    result = _fake_result(
+        grounding={
+            "grounded": True,
+            "reason": "ok",
+            "min_similarity": 0.82,
+            "ungrounded_sentences": [],
+            "hallucinated_numbers": [],
+            "nli_contradictions": [],
+        }
+    )
+    monkeypatch.setattr(api_module, "rag_answer", lambda query, document_id_filter=None: result)
+    client = TestClient(api_module.app)
+
+    resp = client.post("/answer", json={"query": "What are the side effects of Linopril?"})
+
+    assert resp.status_code == 200
+    assert resp.json()["grounding"]["nli_contradictions"] == []
