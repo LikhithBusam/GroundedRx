@@ -30,12 +30,18 @@ torch/CUDA-13/numpy≥2.5 combination `sglang[all]` wants.
 The retrieval/generation/grounding pipeline also exists as an installable package under
 `groundedrx/`, extracted from the notebook (Components 4 and 5) as faithfully as possible —
 same logic, same comments, same documented bug fixes, just split into real modules
-(`config.py`, `paths.py`, `resources.py`, `retrieval.py`, `generation.py`, `grounding.py`,
-`pipeline.py`) with `functools.lru_cache`-based lazy loading so `import groundedrx` needs no
-GPU and no torch/transformers/sentence-transformers install. `rrf_fuse()` (retrieval.py) is a
-pure function taking plain dicts, and `check_grounding()` (grounding.py) takes an injectable
-`embedder` parameter — both specifically so they're unit-testable on a CPU-only machine
-(`tests/`, 30 tests, all passing, no GPU/model downloads, <1s to run).
+(`config.py`, `paths.py`, `resources.py`, `retrieval.py`, `drug_identity.py`, `generation.py`,
+`grounding.py`, `nli.py`, `pipeline.py`) with `functools.lru_cache`-based lazy loading so
+`import groundedrx` needs no GPU and no torch/transformers/sentence-transformers install.
+`rrf_fuse()` (retrieval.py) is a pure function taking plain dicts, and `check_grounding()`
+(grounding.py) takes an injectable `embedder` parameter — both specifically so they're
+unit-testable on a CPU-only machine (`tests/`, 47 tests, all passing, no GPU/model downloads,
+<2s to run). The notebook's two later safety additions — the Drug Identity Gate
+(`drug_identity.py`, wired into `retrieval.py`'s LangGraph pipeline as `check_drug_identity`)
+and NLI contradiction verification (`nli.py`'s `check_grounding_nli`, which wraps
+`grounding.check_grounding` and is what `pipeline.rag_answer()` actually calls) — are ported
+into the package the same way, each with an injectable parameter
+(`classify_fn` for NLI, mirroring `embedder`) so they're unit-testable without a GPU too.
 
 **`tests/test_grounding_fixtures.py`** is a distinct tier from the rest: it uses a real,
 frozen Arabic case (`tests/fixtures/grounding/ar_refusal_case.json`) with genuinely real
@@ -69,7 +75,7 @@ until they're unified.
 
 Runs on every push/PR to `main`, Python 3.10 and 3.11, all CPU-only — no GPU, no model
 downloads, no vector store needed: `ruff check` (lint, default E/F/I rules only — see
-"tooling philosophy" note below), the full `pytest tests/` suite (30 tests), and
+"tooling philosophy" note below), the full `pytest tests/` suite (47 tests), and
 `scripts/check_notebook.py` (verifies every notebook code cell still parses as valid Python,
 the same `ast.parse()` check used by hand throughout this project's development, now
 automatic on every push instead of relying on someone remembering to run it). Deliberately

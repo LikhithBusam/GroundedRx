@@ -121,9 +121,10 @@ This is being built incrementally in the open. Current state:
 - ✅ Evaluation harness (BERTScore, DeepEval, LLM-as-judge) — real results in `results/`
 - ✅ A Gradio demo UI (`GroundedRx_Colab.ipynb`, Component 7) — session-based public link,
   not a permanent deployment
-- ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline
-  extracted into real, importable modules with unit tests (30/30 passing, CPU-only, zero GPU
-  dependencies required just to run them). See [Package](#package) below.
+- ✅ Installable Python package (`groundedrx/`) — the retrieval/generation/grounding pipeline,
+  plus the Drug Identity Gate and NLI contradiction-verification safety layers, extracted into
+  real, importable modules with unit tests (47/47 passing, CPU-only, zero GPU dependencies
+  required just to run them). See [Package](#package) below.
 - ✅ CI (GitHub Actions, `.github/workflows/ci.yml`) — ruff lint, the full pytest suite
   (including the FastAPI wiring, pipeline mocked), a check that every notebook cell still
   parses as valid Python, and a Docker build-only job, all on every push/PR. Python 3.10 and
@@ -136,8 +137,10 @@ This is being built incrementally in the open. Current state:
 
 `groundedrx/` is the pipeline extracted into an installable package — `config.py`,
 `paths.py` (vector-store path resolution), `resources.py` (lazy-loaded model/index
-singletons), `retrieval.py` (hybrid RRF fusion, LangGraph pipeline), `generation.py`,
-`grounding.py`, `pipeline.py`.
+singletons), `retrieval.py` (hybrid RRF fusion, LangGraph pipeline, including the Drug
+Identity Gate node), `drug_identity.py` (drug-name matching, pure functions), `generation.py`,
+`grounding.py` (the numeric + semantic groundedness gate), `nli.py` (contradiction
+verification, wraps `grounding.check_grounding`), `pipeline.py`.
 
 **By design, `import groundedrx` requires no GPU and no torch/transformers/
 sentence-transformers install at all** — every heavy resource in `resources.py` is loaded
@@ -148,7 +151,7 @@ unit-testable on a CPU-only machine:
 ```bash
 pip install -e ".[dev]"
 ruff check groundedrx/ tests/ scripts/
-pytest tests/                    # 30 passed, no GPU, no model downloads, <1s
+pytest tests/                    # 47 passed, no GPU, no model downloads, <2s
 python scripts/check_notebook.py # notebook cells still parse as valid Python
 ```
 

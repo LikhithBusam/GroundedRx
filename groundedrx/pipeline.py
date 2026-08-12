@@ -1,5 +1,7 @@
 """End-to-end glue: retrieve -> rerank -> generate -> groundedness gate.
-Ported from GroundedRx_Colab.ipynb Component 5, Cell 3.
+Ported from GroundedRx_Colab.ipynb Component 5, Cell 3. Uses the
+NLI-augmented gate (nli.check_grounding_nli), which wraps grounding.
+check_grounding and fails soft to it if the NLI model is unavailable.
 """
 
 import logging
@@ -7,7 +9,7 @@ from typing import Optional
 
 from . import config
 from .generation import generate_answer
-from .grounding import check_grounding
+from .nli import check_grounding_nli
 from .retrieval import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ def rag_answer(query: str, document_id_filter: Optional[int] = None) -> dict:
     # Gate judges against generation["context_used"] -- the truncated text
     # the model actually saw. Judging against the full context would credit
     # the model for content it was never shown.
-    verdict = check_grounding(generation["answer"], generation["context_used"], language)
+    verdict = check_grounding_nli(generation["answer"], generation["context_used"], language)
 
     answer = generation["answer"]
     if config.CONFIG_GATE["block_on_fail"] and not verdict["grounded"]:

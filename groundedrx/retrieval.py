@@ -29,6 +29,8 @@ class RAGState(TypedDict):
     context: str
     needs_rewrite: bool
     document_id_filter: Optional[int]  # eval-only: pin retrieval to one known document
+    identified_drug: Optional[str]  # set by check_drug_identity
+    drug_identity_passed: Optional[bool]  # set by check_drug_identity
 
 
 def _tokenize(text: str) -> List[str]:
@@ -204,6 +206,55 @@ def retrieve_chunks(state: RAGState) -> RAGState:
     return {**state, "retrieved_chunks": chunks, "retrieval_score": best_score}
 
 
+# ── Node 4b: Drug Identity Gate ──
+def check_drug_identity(state: RAGState) -> RAGState:
+    """
+    Runs right after hybrid retrieval, before the quality gate. If the query
+    doesn't name a specific drug, this is a no-op -- most real traffic
+    ("what are the side effects of this medication") has no explicit drug
+    identity to check and must never be rejected.
+
+    If a drug IS named, filters retrieved_chunks down to only chunks that
+    literally mention it. If that empties the candidate list, forces
+    retrieval_score to 0.0 so the EXISTING quality-gate retry loop
+    (check_retrieval_quality / rewrite_query) fires naturally -- reusing
+    the existing mechanism rather than building a parallel one.
+    """
+    from .drug_identity import extract_drug_identity, filter_chunks_by_drug
+
+    query = state["query"]
+    chunks = state.get("retrieved_chunks", [])
+
+    identity = extract_drug_identity(query, state["language"])
+    drug = identity["drug"]
+
+    if drug is None:
+        return {**state, "identified_drug": None, "drug_identity_passed": True}
+
+    matching = filter_chunks_by_drug(chunks, drug)
+    n_rejected = len(chunks) - len(matching)
+
+    if matching:
+        if n_rejected:
+            logger.info(
+                f"Drug identity [{drug}]: kept {len(matching)}/{len(chunks)} chunks, "
+                f"rejected {n_rejected} not mentioning '{drug}'"
+            )
+        return {**state, "retrieved_chunks": matching, "identified_drug": drug, "drug_identity_passed": True}
+
+    logger.warning(
+        f"Drug identity [{drug}]: 0/{len(chunks)} retrieved chunks mention '{drug}' "
+        f"-- forcing retrieval_score to 0.0 to trigger a rewrite retry"
+    )
+    return {
+        **state,
+        "retrieved_chunks": [],
+        "retrieval_score": 0.0,  # forces check_retrieval_quality's existing retry loop
+        "identified_drug": drug,
+        "drug_identity_passed": False,
+    }
+
+
 # ── Node 5: Quality Check ──
 def check_retrieval_quality(state: RAGState) -> RAGState:
     """Feedback-loop gate: flags a rewrite if the best dense score is below
@@ -295,6 +346,7 @@ def get_pipeline():
     workflow.add_node("rewrite_query", rewrite_query)
     workflow.add_node("embed_query", embed_query)
     workflow.add_node("retrieve_chunks", retrieve_chunks)
+    workflow.add_node("check_drug_identity", check_drug_identity)
     workflow.add_node("check_retrieval_quality", check_retrieval_quality)
     workflow.add_node("rerank_chunks", rerank_chunks)
     workflow.add_node("build_context", build_context)
@@ -303,7 +355,8 @@ def get_pipeline():
     workflow.add_edge("detect_language", "rewrite_query")
     workflow.add_edge("rewrite_query", "embed_query")
     workflow.add_edge("embed_query", "retrieve_chunks")
-    workflow.add_edge("retrieve_chunks", "check_retrieval_quality")
+    workflow.add_edge("retrieve_chunks", "check_drug_identity")
+    workflow.add_edge("check_drug_identity", "check_retrieval_quality")
     workflow.add_conditional_edges(
         "check_retrieval_quality",
         route_after_quality_check,
@@ -328,5 +381,7 @@ def run_pipeline(query: str, document_id_filter: Optional[int] = None) -> dict:
         context="",
         needs_rewrite=False,
         document_id_filter=document_id_filter,
+        identified_drug=None,
+        drug_identity_passed=None,
     )
     return get_pipeline().invoke(initial_state)

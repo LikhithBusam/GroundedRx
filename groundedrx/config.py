@@ -34,6 +34,19 @@ CONFIG_GATE = {
     "block_on_fail": True,  # ungrounded answer -> replaced by refusal
 }
 
+# NLI contradiction-verification layer (groundedrx/nli.py) -- catches
+# negation the cosine-based CONFIG_GATE check above cannot ("take with
+# alcohol" vs. context "do NOT take with alcohol" scores high on topical
+# similarity and passes CONFIG_GATE, but is a contradiction an NLI model
+# catches).
+NLI_MODEL_NAME = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
+CONFIG_NLI = {
+    "enabled": True,  # set False to fall back to CONFIG_GATE's checks only
+    # ponytail: CALIBRATION KNOB, same status as CONFIG_GATE's
+    # min_sentence_similarity above -- not fit against a labeled dataset.
+    "contradiction_threshold": 0.60,
+}
+
 REFUSAL = {
     "en": "I don't have enough information to answer this question.",
     "ar": "لا أملك معلومات كافية للإجابة على هذا السؤال.",

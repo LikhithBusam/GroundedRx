@@ -96,6 +96,25 @@ def get_model():
 
 
 @lru_cache(maxsize=1)
+def get_nli_tokenizer():
+    """Tokenizer for config.NLI_MODEL_NAME (mDeBERTa-v3 XNLI)."""
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained(config.NLI_MODEL_NAME)
+
+
+@lru_cache(maxsize=1)
+def get_nli_model():
+    """config.NLI_MODEL_NAME, GPU-resident, in eval mode. Used by nli.py's
+    contradiction-detection layer on top of the base groundedness gate."""
+    from transformers import AutoModelForSequenceClassification
+
+    model = AutoModelForSequenceClassification.from_pretrained(config.NLI_MODEL_NAME).to("cuda")
+    model.eval()
+    return model
+
+
+@lru_cache(maxsize=1)
 def get_bm25_docs() -> List[dict]:
     """Every chunk's payload, pulled once via a full collection scroll."""
     points, _ = get_client().scroll(
