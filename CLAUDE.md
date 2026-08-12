@@ -680,11 +680,79 @@ more capable general model (Qwen2.5-7B vs. Falcon-H1-1.5B) judging its own outpu
 applies harsher, more medically-literate scrutiny than the weak Falcon-H1 judge ever could —
 correctly catching real issues the old judge missed, not because generation degraded.
 
-**Do not report the judge-based accuracy collapse as "Qwen generates worse answers."**
-Report it as a disclosed measurement limitation: self-judged accuracy is not comparable
-across generator-model swaps in this design, because the model changes on both sides of the
-comparison simultaneously. Resolving this would need either a third, fixed, independent
-judge model, or a human rating pass on a sample — neither has been done.
+**Do not report the judge-based accuracy collapse as "Qwen generates worse answers."** At
+the time this section was first written, that was reported as a disclosed measurement
+limitation — self-judged accuracy is not comparable across generator-model swaps in this
+design, because the model changes on both sides of the comparison simultaneously — with
+resolution deferred to a third, fixed, independent judge model or a human rating pass,
+neither done yet. **That follow-up has since been run — see below.**
+
+**Independent-judge follow-up: partially confirms the self-judging confound, not
+universally.** A third, fixed model (`microsoft/Phi-3.5-mini-instruct`, 3.8B, English-centric,
+a genuinely different family from both Falcon-H1 and Qwen2.5) was loaded as an independent
+judge and scored the same 12 `EVAL_QA` answers already produced by `rag_answer`, alongside
+the original self-judged (Qwen2.5) scores. This does not re-run generation — same answers,
+two different judges. Results, numbers unchanged from the live run:
+
+| Dimension | Self-judged (Qwen2.5) | Independent (Phi-3.5) | Reading |
+|---|---|---|---|
+| AR accuracy | 1.00 | 1.00 | **Agreement** |
+| AR safety | 4.20 | 2.00 | **Divergence** |
+| AR coherence | 5.00 | 1.40 | **Divergence** |
+| EN accuracy | 3.00 | 3.71 | Divergence (independent *higher*) |
+| EN safety | 3.86 | 4.14 | Divergence (independent *higher*) |
+| EN coherence | 4.57 | 3.86 | Divergence (independent *lower*) |
+
+This splits the Experiment 3 ambiguity into three distinct, separately-supported
+conclusions instead of one blanket "self-judging confound" claim:
+
+- **Self-judging effect, confirmed:** Arabic safety and Arabic coherence. Qwen rates its own
+  Arabic outputs far more favorably than the independent judge does on exactly these two
+  dimensions (safety 4.20 vs. 2.00; coherence 5.00 vs. 1.40) — a real, judge-dependent bias,
+  not a measurement artifact.
+- **Genuine generation-quality problem, not explained by self-judging:** Arabic accuracy.
+  Two independently-run judges from two different model families landed on the identical
+  score (1.00 vs. 1.00). Self-judging bias cannot produce agreement — it can only inflate one
+  side. This is the strongest evidence yet that the Arabic accuracy problem documented
+  throughout this investigation is real, not a self-judging artifact.
+- **Inconclusive / mixed, not evidence of universal self-judging bias:** English. The
+  independent judge scored EN accuracy and safety *higher* than the self-judge, and coherence
+  *lower* — the opposite of a consistent self-inflation pattern. Do not claim self-judging
+  bias applies broadly across languages or dimensions; it does not.
+
+**Precise conclusion to cite going forward:** the independent-judge experiment partially
+confirmed the self-judging confound. For Arabic safety and coherence, Qwen rated its own
+outputs substantially more favorably than an independent Phi-3.5 judge, confirming
+judge-dependent bias. However, both judges independently rated Arabic accuracy at 1.00,
+indicating that the Arabic accuracy problem is genuine and cannot be explained by
+self-judging. English results were mixed and did not show a consistent self-judging
+inflation pattern. Retire the older, broader "this is a self-judging confound, not a real
+quality regression" framing above (§ "The load-bearing evidence") as superseded — it was a
+reasonable hypothesis from BERTScore alone at the time, but the independent judge shows it
+was only *partly* right.
+
+**What this experiment established:**
+- Arabic accuracy is a genuine, judge-independent generation-quality problem — confirmed by
+  two different judge models agreeing, not just by BERTScore staying flat.
+- Arabic safety and coherence self-scores are inflated by Qwen judging its own output; treat
+  the self-judged numbers for those two dimensions as unreliable and prefer the independent
+  judge's numbers when citing Arabic quality.
+- English judge scores show no reliable directional bias either way — neither confirm nor
+  rule out a self-judging effect for English.
+
+**Caveats — read the numbers this way, not as a verdict:**
+- Phi-3.5-mini-instruct is **not ground truth**. It is a second, independent judge — smaller
+  than Qwen2.5-7B, from a different model family, chosen for VRAM headroom and genuine
+  lineage independence, not because it is presumed more accurate or trustworthy.
+- Judge choice can still affect scores. Agreement between two judges is stronger evidence
+  than either judge alone, but it is not proof of correctness, and disagreement between two
+  judges doesn't tell you which one (if either) is right.
+- Phi-3.5's Arabic judging quality is itself unverified and plausibly weaker than a dedicated
+  multilingual judge would be — read the AR independent-judge numbers with that caveat too,
+  even where they agree with self-judging.
+- **BERTScore remains the one additional judge-independent metric available** (0.899 EN /
+  0.637 AR from the table above) and continues to be the metric least entangled with which
+  model is doing the scoring.
 
 **Two bugs were found and fixed in the runtime groundedness gate while running these
 experiments** (both now covered by permanent regression asserts in Component 5's self-check):
