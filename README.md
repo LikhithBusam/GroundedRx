@@ -3,6 +3,10 @@
 **A bilingual (Arabic/English) medical RAG system with a runtime groundedness gate that
 blocks unsupported answers before they reach the user.**
 
+[![CI](https://github.com/LikhithBusam/GroundedRx/actions/workflows/ci.yml/badge.svg)](https://github.com/LikhithBusam/GroundedRx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 Answers patient questions about medications from a corpus of patient information leaflets,
 in either Arabic or English, using hybrid (dense + BM25) retrieval and a locally-hosted
 Qwen2.5-7B-Instruct model. Every generated answer is checked against its retrieved source
@@ -11,11 +15,26 @@ text before being shown — if the check fails, the user gets a refusal, not a g
 > Was named "FalconMed AI" — renamed after a model swap (Falcon-H1 → Qwen2.5) left the old
 > name referring to an architecture no longer in use.
 
-**Not medical advice. A portfolio/demo project, not a certified clinical tool.**
+> **Disclaimer:** not medical advice. A portfolio/demo project, not a certified clinical tool.
 
 ---
 
-## Why this project is interesting
+## Table of Contents
+
+- [Highlights](#highlights)
+- [Architecture](#architecture)
+- [Evaluation Results](#evaluation-results)
+- [Known Limitations](#known-limitations)
+- [Project Status](#project-status)
+- [Package](#package)
+- [On-Premises Deployment](#on-premises-deployment)
+- [Getting Started](#getting-started)
+- [Repository Structure](#repository-structure)
+- [License](#license)
+
+---
+
+## Highlights
 
 - **Fully self-hosted, on-premises-capable.** No call to OpenAI, Anthropic, or any external
   LLM API. The generation model, the embedding model, the reranker, and the vector store are
@@ -24,7 +43,7 @@ text before being shown — if the check fails, the user gets a refusal, not a g
   [On-Premises Deployment](#on-premises-deployment) below.
 - **True cross-lingual retrieval, measured, not assumed.** An Arabic query can surface English
   source chunks and vice versa without translating first — verified directly (see
-  [Results](#results-real-numbers)), not just claimed because the embedding model is
+  [Evaluation Results](#evaluation-results)), not just claimed because the embedding model is
   "multilingual."
 - **A groundedness gate that has actually caught a real fabrication.** Not a theoretical
   safety feature — on the 12-question evaluation set it blocked an answer that invented a
@@ -76,7 +95,7 @@ detect_language → rewrite_query → embed_query → retrieve_chunks → check_
 Full design rationale, every rejected alternative, and the reasoning behind each choice is in
 `CLAUDE.md`.
 
-## Results (real numbers)
+## Evaluation Results
 
 All numbers from actual runs over a 12-question (7 EN + 5 AR) evaluation set, each question
 grounded in one specific real document (not generic phrasing). Full methodology and every
@@ -124,7 +143,7 @@ evidenced ceilings, both found through live testing rather than theorized:
 Both are documented in detail, with the exact reproducing query, in `CLAUDE.md` and
 `PROJECT_REPORT.md`.
 
-## Status — what actually exists today
+## Project Status
 
 This is being built incrementally in the open. Current state:
 
@@ -261,7 +280,7 @@ This is deliberately not overstated as "done" — a Docker image that builds is 
 claim as one that works, and the gap between those two was a real, confirmed bug, not a
 hypothetical one.
 
-## Running it
+## Getting Started
 
 Requires a CUDA GPU (the model is served via `transformers` + 4-bit `bitsandbytes`) — this
 does not run on a CPU-only machine. Developed against Google Colab's free T4 tier, verified
@@ -276,7 +295,7 @@ portable to Kaggle.
 Full instructions, including the Colab/Kaggle differences and every cell's purpose, are in
 `CLAUDE.md`.
 
-## Repository contents
+## Repository Structure
 
 - `GroundedRx_Colab.ipynb` — the notebook to run.
 - `CLAUDE.md` — full technical documentation: every design decision, every rejected
