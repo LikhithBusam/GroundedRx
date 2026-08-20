@@ -61,6 +61,18 @@ detect_language → rewrite_query → embed_query → retrieve_chunks → check_
   every answer sentence must have a high-cosine match against a context sentence. Majority-vote
   blocking, fails closed on any error.
 
+> **Zero-GPU safety smoke test.** You don't need Kaggle/Colab or a GPU to see the gate work:
+> ```bash
+> python -m pytest -q tests/test_grounding_fixtures.py
+> ```
+> Runs in well under a second, no network, no model download. It replays a real Arabic case
+> (real query, real retrieved context, frozen real `bge-m3` embedding vectors from a live
+> Kaggle run) where the model's raw answer was unsupported by the context, and asserts the
+> gate blocks it — `grounded: False`, the delivered answer becomes the Arabic refusal string,
+> and the original raw answer is preserved separately for inspection. See
+> [`tests/test_grounding_fixtures.py`](tests/test_grounding_fixtures.py) for the full
+> provenance of the fixture.
+
 Full design rationale, every rejected alternative, and the reasoning behind each choice is in
 `CLAUDE.md`.
 
