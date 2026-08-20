@@ -773,6 +773,71 @@ experiments** (both now covered by permanent regression asserts in Component 5's
   fail-closed guarantee broke exactly where it mattered. Fixed by requiring the refusal phrase
   to account for (nearly) the whole answer, not merely appear somewhere inside it.
 
+**Follow-up: a context-truncation bug, not Arabic generation quality, explains all 5 of the 5
+AR eval cases (found via the "Qualitative Arabic Generation Diagnostic" notebook cells, a live
+Kaggle GPU run, post-dating the model-swap experiment above).** The independent-judge
+follow-up established that AR accuracy (1.00/1.00, both judges) is a genuine, judge-independent
+problem — that conclusion still stands. What's new is the *mechanism*: it is a retrieval/
+context-assembly bug, not a generation-quality or model-capacity limitation, for every one of
+the 5 AR `EVAL_QA` questions.
+
+`generate_answer`'s context truncation (`context[:2000]`, Component 5 "CELL 2") applies to the
+*joined* block of all 5 reranked chunks as a single string, not per-chunk. For the AR
+`EVAL_QA` document (Logynon, `document_id=498`), one chunk covering missed-dose/overdose/
+cycle-start instructions is 10,883 characters — more than 5× the entire 2000-char budget by
+itself, and it reranks into the top position for most of these queries. Measured directly
+(character offset of the reference answer's own text inside the joined, reranked context,
+against the 2000-char cutoff) for all 5 questions:
+
+| Question | Reference text found at offset | Within 2000-char window? |
+|---|---|---|
+| Side effects | not found verbatim (paraphrased in source) | chunk containing it starts at 1965, ~35 chars visible — effectively no |
+| Storage | found in reranked chunk 5 (536 chars) | **no** — chunk 1 alone (10,883 chars) consumes the entire budget before chunk 5 is ever reached |
+| Dosage | not found verbatim (paraphrased in source) | chunk containing it is 98% past the cutoff |
+| Pregnancy safety | found at offset 5500 | **no** — 2.75× past the cutoff |
+| Missed dose | found at offset 3430 | **no** — 1.7× past the cutoff |
+
+Storage is the cleanest direct proof: the actual instructions
+(*"يحفظ في درجة حرارة أقل من 30 درجة مئوية..."*, near-verbatim match to the reference) sit in
+the reranked chunk 5 — correctly retrieved, `retrieval_bertscore_f1=0.753`, the highest of all
+5 AR cases — but chunk 1 alone consumes the whole truncation window before chunk 5 is ever
+concatenated in, so the model never saw it. Qwen's refusal for that question was **the
+factually correct response given its actual input**, not a generation defect.
+
+**Correction to an earlier version of this section (self-caught, not from new user input):**
+Cases 2 and 5 above (pregnancy safety, missed dose) were originally written up as
+"`WRONG_INTERPRETATION` — the NLI gate flagged a direct contradiction, meaning the relevant
+text *was* inside the model's truncated context window." **That inference was wrong.** Checked
+directly against `check_grounding`'s NLI wrapper (the "Safety Improvement: NLI Verification"
+cell): it runs on the exact same `context` parameter passed in — which at the call site in
+`rag_answer` is `generation["context_used"]`, the *already-truncated* 2000-char text. The NLI
+check has no access to anything past that cutoff, same as the model itself. Once the reference
+answer's actual offset was measured directly (5500 and 3430, both past 2000), that assumption
+no longer holds: the NLI contradiction is between the model's self-referential meta-commentary
+and *some other* sentence within the visible truncated window (whichever one the cosine
+best-match paired it with) — not proof the model saw and misread the real answer. All 5 cases
+now trace to the same upstream cause.
+
+**Where CJK code-switching (2 of 5 cases: side effects, missed dose) fits in:** `answer_raw`
+ends with a fluent, grammatically correct Chinese clause explaining what the context does or
+doesn't cover (e.g. *"提供的信息中没有提到关于左诺孕酮的副作用"* — "the provided info doesn't
+mention Levonorgestrel's side effects"). Same failure class as the `ليس限اً` corruption
+documented earlier in this file, but a different shape (a full appended clause, not one
+character embedded mid-word), and it fired only in *meta-commentary about the context itself*,
+never in substantive medical answer content — plausibly a downstream symptom of the model
+reasoning under a severely incomplete, truncated context, not an independent generation
+defect layered on top of the truncation bug.
+
+**Practical consequence: the fixable next step is a context-assembly change (cap each chunk's
+contribution to the 2000-char budget, or truncate proportionally across all 5 reranked
+chunks), not a decoding, quantization, or model-swap lever.** That fix has not been
+implemented — this section documents the diagnosis, confirmed against a live Kaggle GPU run
+and real corpus data (exact character offsets, not inference), not a proposed or applied
+change. This single upstream bug plausibly accounts for most of the measured AR accuracy gap
+on this document — a materially different conclusion than "Arabic generation quality" or
+"model capacity," both of which this section now retires as the explanation for these 5
+specific cases.
+
 ## Key Constraints When Modifying
 
 - Any change to embedding model, normalization, or vector dimension must stay consistent
